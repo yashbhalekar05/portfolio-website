@@ -1,0 +1,197 @@
+# 🚀 Enhanced DevOps Workshop - Deploy Portfolio with Automated Tests
+# This workflow demonstrates a complete CI/CD pipeline for beginners
+
+name: Deploy Portfolio to GitHub Pages
+
+on:
+  # Trigger on pushes to master branch
+  push:
+    branches: ["master"]
+  
+  # Trigger on pull requests to master (for testing)
+  pull_request:
+    branches: ["master"]
+  
+  # Allow manual triggering from Actions tab
+  workflow_dispatch:
+
+# Set permissions for GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ensure only one deployment at a time
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # ===============================================
+  # JOB 1: AUTOMATED TESTING
+  # This job runs first to validate the code
+  # ===============================================
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 🔍 Test 1 - Check Required Files
+        run: |
+          echo "🧪 Testing if required files exist..."
+          
+          # Test if index.html exists
+          if [ ! -f "index.html" ]; then
+            echo "❌ FAIL: index.html file not found!"
+            echo "💡 Make sure you have an index.html file in your repository"
+            exit 1
+          fi
+          echo "✅ PASS: index.html found"
+          
+          # Test if CSS file exists (optional)
+          if [ -f "style.css" ] || [ -f "styles.css" ]; then
+            echo "✅ PASS: CSS file found"
+          else
+            echo "⚠️  WARNING: No CSS file found, but continuing..."
+          fi
+      
+      - name: 🏷️ Test 2 - Check Name Personalization
+        run: |
+          echo "🧪 Testing if student personalized their portfolio..."
+          
+          # Test if student replaced placeholder text
+          if grep -qi "YOUR NAME HERE" index.html; then
+            echo "❌ FAIL: Found placeholder text 'YOUR NAME HERE'"
+            echo "💡 Please replace 'YOUR NAME HERE' with your actual name in index.html"
+            exit 1
+          fi
+          
+          # Test for other common placeholders
+          if grep -qi "STUDENT NAME" index.html; then
+            echo "❌ FAIL: Found placeholder text 'STUDENT NAME'"
+            echo "💡 Please replace placeholder text with your actual name"
+            exit 1
+          fi
+          
+          echo "✅ PASS: Portfolio has been personalized!"
+          
+      - name: 🏗️ Test 3 - HTML Structure Validation
+        run: |
+          echo "🧪 Testing HTML structure..."
+          
+          # Test for essential HTML tags
+          if ! grep -qi "<html" index.html; then
+            echo "❌ FAIL: Missing <html> tag"
+            exit 1
+          fi
+          
+          if ! grep -qi "<head>" index.html; then
+            echo "❌ FAIL: Missing <head> section"
+            exit 1
+          fi
+          
+          if ! grep -qi "<body>" index.html; then
+            echo "❌ FAIL: Missing <body> section"
+            exit 1
+          fi
+          
+          if ! grep -qi "<title>" index.html; then
+            echo "⚠️  WARNING: Missing <title> tag (SEO best practice)"
+          fi
+          
+          echo "✅ PASS: HTML structure looks good!"
+          
+      - name: 🎨 Test 4 - Content Quality Check
+        run: |
+          echo "🧪 Testing content quality..."
+          
+          # Check if there's actual content (not just empty tags)
+          content_length=$(grep -o '<body[^>]*>.*</body>' index.html | wc -c)
+          if [ $content_length -lt 100 ]; then
+            echo "⚠️  WARNING: Very little content found in body"
+            echo "💡 Consider adding more content to your portfolio"
+          else
+            echo "✅ PASS: Good amount of content found!"
+          fi
+          
+      - name: 📊 Test Summary
+        run: |
+          echo "🎉 All automated tests completed!"
+          echo "📋 Your portfolio is ready for deployment"
+          echo "🌐 After deployment, your site will be available at:"
+          echo "   https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+
+  # ===============================================
+  # JOB 2: DEPLOYMENT
+  # This job runs only after tests pass successfully
+  # Only deploys on pushes to master (not PRs)
+  # ===============================================
+  deploy:
+    name: 🚀 Deploy to GitHub Pages
+    # This job depends on the test job completing successfully
+    needs: test
+    
+    # Only deploy on pushes to master branch (not on pull requests)
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    # Set up GitHub Pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: 🛠️ Setup GitHub Pages
+        uses: actions/configure-pages@v5
+        
+      - name: 📦 Upload Website Files
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload the entire repository (all files)
+          path: '.'
+          
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        
+      - name: 🎉 Deployment Success
+        run: |
+          echo "🎉 Deployment completed successfully!"
+          echo "🌐 Your portfolio is now live at:"
+          echo "   ${{ steps.deployment.outputs.page_url }}"
+          echo "📱 Share your portfolio with friends and family!"
+
+  # ===============================================
+  # JOB 3: POST-DEPLOYMENT CHECKS (Optional)
+  # This job runs after deployment to verify everything works
+  # ===============================================
+  verify:
+    name: ✅ Post-Deployment Verification
+    needs: deploy
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🔍 Check if Site is Live
+        run: |
+          echo "🌐 Waiting for site to be available..."
+          sleep 30
+          
+          SITE_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          
+          # Test if site responds (simple check)
+          if curl -s -f -o /dev/null "$SITE_URL"; then
+            echo "✅ SUCCESS: Portfolio site is live and accessible!"
+            echo "🎊 Congratulations! Your DevOps pipeline is working perfectly!"
+          else
+            echo "⚠️  Site might still be deploying... this can take a few minutes"
+            echo "🔄 Try visiting your site in a few minutes"
+          fi
+          
+          echo "🌐 Your portfolio URL: $SITE_URL"
